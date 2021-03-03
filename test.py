@@ -478,26 +478,41 @@ opt = optim.SGD(model.parameters(), lr=1e-3, momentum=0.9, weight_decay=5e-4)
 
 model = nn.DataParallel(model)
 
-for epoch in range(epochs):
+# for epoch in range(epochs):
 
-    print("++++++++++++++++++++++++++++++++Epoch: " + str(epoch+1) + "++++++++++++++++++++++++++++++++")
-    model.train()
+#     print("++++++++++++++++++++++++++++++++Epoch: " + str(epoch+1) + "++++++++++++++++++++++++++++++++")
+#     model.train()
 
-    train_loss = 0
-    correct = 0
-    total = 0
-    for batch_idx, (inputs, targets) in enumerate(trainloader):
-        inputs, targets = inputs.to(device), targets.to(device)
-        opt.zero_grad()
-        outputs = model(inputs)
+#     train_loss = 0
+#     correct = 0
+#     total = 0
+#     for batch_idx, (inputs, targets) in enumerate(trainloader):
+#         inputs, targets = inputs.to(device), targets.to(device)
+#         opt.zero_grad()
+#         outputs = model(inputs)
 
-        loss = loss_f(inputs=outputs, targets=targets)
-        loss.backward()
-        opt.step()
+#         loss = loss_f(inputs=outputs, targets=targets)
+#         loss.backward()
+#         opt.step()
 
-        train_loss += loss.item()
+#         train_loss += loss.item()
         
-    print( 'Loss: %.4f' % (loss.item()))
+#     print( 'Loss: %.4f' % (loss.item()))
 
-torch.save(model.state_dict(), "./model.pth")
-print("saved model!!!")
+# torch.save(model.state_dict(), "./model.pth")
+# print("saved model!!!")
+
+
+model = Segnet() 
+model.load_state_dict(torch.load("./model.pth"), strict=False)
+model.eval()
+
+for inputs, targets in trainloader:
+    inputs, targets = inputs.to(device), targets.to(device)
+    opt.zero_grad()
+    outputs = model(inputs)
+
+def evaluate(ground_truth, predictions):
+    
+    
+    return f1_score, auc_score, dice_coeeficient
