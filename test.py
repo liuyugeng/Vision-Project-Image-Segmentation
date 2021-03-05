@@ -20,7 +20,7 @@ from tqdm import tqdm
 from torch.utils import data
 from torchvision import transforms
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,6"
+os.environ["CUDA_VISIBLE_DEVICES"] = "6,7"
 torch.multiprocessing.set_sharing_strategy('file_system')
 
 
@@ -438,11 +438,11 @@ class fcn32s(nn.Module):
 
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-model = fcn32s().to(device)
+model = Segnet().to(device)
 
 
 local_path = 'VOCdevkit/VOC2012/' # modify it according to your device
-bs = 64
+bs = 4
 epochs = 100
 
 
@@ -478,41 +478,26 @@ opt = optim.SGD(model.parameters(), lr=1e-3, momentum=0.9, weight_decay=5e-4)
 
 model = nn.DataParallel(model)
 
-# for epoch in range(epochs):
+for epoch in range(epochs):
 
-#     print("++++++++++++++++++++++++++++++++Epoch: " + str(epoch+1) + "++++++++++++++++++++++++++++++++")
-#     model.train()
+    print("++++++++++++++++++++++++++++++++Epoch: " + str(epoch+1) + "++++++++++++++++++++++++++++++++")
+    model.train()
 
-#     train_loss = 0
-#     correct = 0
-#     total = 0
-#     for batch_idx, (inputs, targets) in enumerate(trainloader):
-#         inputs, targets = inputs.to(device), targets.to(device)
-#         opt.zero_grad()
-#         outputs = model(inputs)
+    train_loss = 0
+    correct = 0
+    total = 0
+    for batch_idx, (inputs, targets) in enumerate(trainloader):
+        inputs, targets = inputs.to(device), targets.to(device)
+        opt.zero_grad()
+        outputs = model(inputs)
 
-#         loss = loss_f(inputs=outputs, targets=targets)
-#         loss.backward()
-#         opt.step()
+        loss = loss_f(inputs=outputs, targets=targets)
+        loss.backward()
+        opt.step()
 
-#         train_loss += loss.item()
+        train_loss += loss.item()
         
-#     print( 'Loss: %.4f' % (loss.item()))
+    print( 'Loss: %.4f' % (loss.item()))
 
-# torch.save(model.state_dict(), "./model.pth")
-# print("saved model!!!")
-
-
-model = Segnet() 
-model.load_state_dict(torch.load("./model.pth"), strict=False)
-model.eval()
-
-for inputs, targets in trainloader:
-    inputs, targets = inputs.to(device), targets.to(device)
-    opt.zero_grad()
-    outputs = model(inputs)
-
-def evaluate(ground_truth, predictions):
-    
-    
-    return f1_score, auc_score, dice_coeeficient
+torch.save(model.state_dict(), "./segnet_model.pth")
+print("saved model!!!")
