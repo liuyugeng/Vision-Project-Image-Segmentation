@@ -1,24 +1,25 @@
 import os
-from os.path import join as pjoin
-import collections
+import glob
 import json
 import torch
 import imageio
 import functools
+import collections
 import numpy as np
-import scipy.misc as m
 import scipy.io as io
-import matplotlib.pyplot as plt
-import glob
 import torch.nn as nn
+import scipy.misc as m
 import torch.optim as optim
+import matplotlib.pyplot as plt
 import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
 
 from PIL import Image
 from tqdm import tqdm
 from torch.utils import data
+from os.path import join as pjoin
 from torchvision import transforms
+from sklearn.metrics import roc_auc_score
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "6,7"
 torch.multiprocessing.set_sharing_strategy('file_system')
@@ -230,6 +231,7 @@ class pascalVOCDataset(data.Dataset):
 
         assert expected == 2913, "unexpected dataset sizes"
 
+
 class conv2DBatchNormRelu(nn.Module):
     def __init__(
         self,
@@ -263,7 +265,10 @@ class conv2DBatchNormRelu(nn.Module):
 
     def forward(self, inputs):
         outputs = self.cbr_unit(inputs)
+
         return outputs
+
+
 
 class segnetDown2(nn.Module):
     def __init__(self, in_size, out_size):
@@ -325,7 +330,6 @@ class segnetUp3(nn.Module):
         outputs = self.conv2(outputs)
         outputs = self.conv3(outputs)
         return outputs
-
 
 class Segnet(nn.Module):
     def __init__(self, n_classes=21, in_channels=3, is_unpooling=True):
@@ -396,54 +400,14 @@ class Segnet(nn.Module):
                 l2.weight.data = l1.weight.data
                 l2.bias.data = l1.bias.data
 
-class fcn32s(nn.Module):
-    def __init__(self, n_classes=21):
-        super(fcn32s, self).__init__()
-
-        self.conv_block1 = nn.Sequential(
-            nn.Conv2d(3, 64, 3, padding=100),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(2, stride=2, ceil_mode=True),
-        )
-
-        self.conv_block2 = nn.Sequential(
-            nn.Conv2d(64, 128, 3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(2, stride=2, ceil_mode=True),
-        )
-
-        self.conv_block3 = nn.Sequential(
-            nn.Conv2d(128, 256, 3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(2, stride=2, ceil_mode=True),
-        )
-
-        self.classifier = nn.Sequential(
-            nn.Conv2d(256, 1024, 7),
-            nn.ReLU(inplace=True),
-            nn.Dropout2d(),
-            nn.Conv2d(1024, n_classes, 1),
-        )
-
-    def forward(self, x):
-        conv1 = self.conv_block1(x)
-        conv2 = self.conv_block2(conv1)
-        conv3 = self.conv_block3(conv2)
-
-        score = self.classifier(conv3)
-
-        out = F.interpolate(score, x.size()[2:])
-
-        return out
-
-
-device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
 model = Segnet().to(device)
+model = nn.DataParallel(model)
 
 
 local_path = 'VOCdevkit/VOC2012/' # modify it according to your device
-bs = 4
-epochs = 100
+bs = 16
+epochs = 300
 
 
 # dataset variable
@@ -469,14 +433,27 @@ def loss_f(inputs, targets, weight=None):
     )
     return loss
 
+eval_acc = 0
 
+def _fast_hist(truth, pred):
+    mask = (truth >= 0) & (truth < 21)
+    hist = np.bincount(21 * truth[mask].astype(int) + pred[mask], minlength=21 ** 2).reshape(21, 21)
+    return hist
+
+
+def evaluate(ground_truth, predictions):
+    hist = np.zeros((21, 21))
+    for lt, lp in zip(ground_truth, predictions):
+        hist += _fast_hist(lt.flatten(), lp.flatten())
+
+    f1_score = np.nanmean(2. * np.diag(hist).sum() /(hist.sum(axis=1) + hist.sum(axis=0)))
+    
+    return f1_score
 
 
 # optimizer variable
 opt = optim.SGD(model.parameters(), lr=1e-3, momentum=0.9, weight_decay=5e-4)
 
-
-model = nn.DataParallel(model)
 
 for epoch in range(epochs):
 
@@ -486,6 +463,8 @@ for epoch in range(epochs):
     train_loss = 0
     correct = 0
     total = 0
+    f1_score = 0
+
     for batch_idx, (inputs, targets) in enumerate(trainloader):
         inputs, targets = inputs.to(device), targets.to(device)
         opt.zero_grad()
@@ -496,6 +475,15 @@ for epoch in range(epochs):
         opt.step()
 
         train_loss += loss.item()
+
+        label_pred = outputs.max(dim=1)[1].data.cpu().numpy()
+        label_true = targets.data.cpu().numpy()
+
+        for lbt, lbp in zip(label_true, label_pred):
+            f1 = evaluate(lbt, lbp)
+            f1_score += f1
+
+    print(f1_score/len(dst))
         
     print( 'Loss: %.4f' % (loss.item()))
 
