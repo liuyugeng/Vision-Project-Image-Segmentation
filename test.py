@@ -2,6 +2,7 @@ import os
 import glob
 import json
 import torch
+import pickle
 import imageio
 import functools
 import collections
@@ -19,9 +20,9 @@ from tqdm import tqdm
 from torch.utils import data
 from os.path import join as pjoin
 from torchvision import transforms
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import auc
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "6,7"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,6"
 torch.multiprocessing.set_sharing_strategy('file_system')
 
 
@@ -441,51 +442,109 @@ def _fast_hist(truth, pred):
     return hist
 
 
-def evaluate(ground_truth, predictions):
+def evaluate(ground_truth, predictions, smooth=1):
+
     hist = np.zeros((21, 21))
+
     for lt, lp in zip(ground_truth, predictions):
         hist += _fast_hist(lt.flatten(), lp.flatten())
 
-    f1_score = np.nanmean(2. * np.diag(hist).sum() /(hist.sum(axis=1) + hist.sum(axis=0)))
+    f1_score = np.nanmean(2 * (np.diag(hist) + smooth) / (hist.sum(axis=1) + hist.sum(axis=0) + smooth))
+    dice_coefficient = f1_score
+
+    tpr = (np.diag(hist))/ (hist.sum(axis=1))
+    fpr = (hist.sum(axis=0) - np.diag(hist)) / (np.array([hist.sum() for i in range(21)]) - hist.sum(axis=1))
     
-    return f1_score
+    # tpr = np.nan_to_num(tpr)
+    # fpr = np.nan_to_num(fpr)
+
+    # sorted_indices = np.argsort(fpr)
+    # sorted_fpr = fpr[sorted_indices]
+    # sorted_tpr = tpr[sorted_indices]
+
+    auc_score = 0.5 - np.nanmean(fpr)/2 + np.nanmean(tpr)/2
+
+    return f1_score, dice_coefficient, auc_score
 
 
 # optimizer variable
 opt = optim.SGD(model.parameters(), lr=1e-3, momentum=0.9, weight_decay=5e-4)
 
 
+# for epoch in range(epochs):
+#     print("=================>Epoch: " + str(epoch+1))
+#     model.train()
+
+#     train_loss = 0
+#     correct = 0
+#     total = 0
+#     f1_score = 0
+
+#     for batch_idx, (inputs, targets) in enumerate(trainloader):
+#         inputs, targets = inputs.to(device), targets.to(device)
+#         opt.zero_grad()
+#         outputs = model(inputs)
+
+#         loss = loss_f(inputs=outputs, targets=targets)
+#         loss.backward()
+#         opt.step()
+
+#         train_loss += loss.item()
+
+#         label_pred = outputs.max(dim=1)[1].data.cpu().numpy()
+#         label_true = targets.data.cpu().numpy()
+
+#         for lbt, lbp in zip(label_true, label_pred):
+#             f1 = evaluate(lbt, lbp)
+#             f1_score += f1
+
+#     print(f1_score/len(dst))
+#     print( 'Loss: %.4f' % (loss.item()))
+#     torch.save(model.state_dict(), "./models/model_epoch" + str(epoch) + ".pth")
+
+# print("saved model!!!")
+
+f1_score_matrix = []
+auc_score_matrix = []
+
 for epoch in range(epochs):
+    val_model = Segnet().to(device)
+    val_model.load_state_dict(torch.load("./models/model_epoch" + str(epoch) + ".pth"), strict=False)
+    val_model = nn.DataParallel(val_model)
+    val_model.eval()
 
-    print("++++++++++++++++++++++++++++++++Epoch: " + str(epoch+1) + "++++++++++++++++++++++++++++++++")
-    model.train()
+    label_pred = []
+    label_true = []
 
-    train_loss = 0
-    correct = 0
-    total = 0
-    f1_score = 0
+    f1_scores = 0
+    dice_coefficients = 0
+    auc_scores = 0
 
-    for batch_idx, (inputs, targets) in enumerate(trainloader):
-        inputs, targets = inputs.to(device), targets.to(device)
-        opt.zero_grad()
-        outputs = model(inputs)
+    with torch.no_grad():
+        for idx, (inputs, targets) in enumerate(trainloader):
+            inputs = inputs.to(device)
+            outputs = val_model(inputs)
 
-        loss = loss_f(inputs=outputs, targets=targets)
-        loss.backward()
-        opt.step()
+            label_pred.append(outputs.data.max(dim=1)[1].cpu().numpy())
+            label_true.append(targets.numpy())
 
-        train_loss += loss.item()
+    label_pred = np.concatenate(label_pred, axis=0)
+    label_true = np.concatenate(label_true, axis=0)
 
-        label_pred = outputs.max(dim=1)[1].data.cpu().numpy()
-        label_true = targets.data.cpu().numpy()
 
-        for lbt, lbp in zip(label_true, label_pred):
-            f1 = evaluate(lbt, lbp)
-            f1_score += f1
+    # label_pred = outputs.data.max(dim=1)[1].cpu().numpy()
+    # label_true = targets.numpy()
 
-    print(f1_score/len(dst))
-        
-    print( 'Loss: %.4f' % (loss.item()))
+    for lbt, lbp in zip(label_true, label_pred):
+        f1_score, dice_coefficient, auc_score = evaluate(lbt, lbp)
+        f1_scores += f1_score
+        auc_scores += auc_score
 
-torch.save(model.state_dict(), "./segnet_model.pth")
-print("saved model!!!")
+
+    f1_score_matrix.append(f1_scores/len(label_true))
+    auc_score_matrix.append(auc_scores/len(label_true))
+
+    print("epoch" + str(epoch) + "finished")
+
+with open("./result.p", "ab") as f:
+    pickle.dump((f1_score_matrix, auc_score_matrix), f)
