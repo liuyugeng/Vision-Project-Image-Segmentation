@@ -1,11 +1,13 @@
+import os
 import torch
 import numpy as np
 import torchvision
+import torch.nn as nn
 import torch.nn.functional as F
 
 from torch import optim
 from torch.autograd import Variable
-
+from torch.cuda.amp import GradScaler, autocast
 
 class task2_train():
     def __init__(self, device, train_loader, val_loader, test_loader, model, MODEL_PATH):
@@ -17,7 +19,8 @@ class task2_train():
 
         self.model = model.to(device)
         self.optimizer = optim.Adam(self.model.parameters(), lr=2e-4)
-        self.criterion = torch.nn.BCELoss()
+        self.criterion = nn.BCEWithLogitsLoss()
+        self.scaler = GradScaler()
 
     def get_accuracy(self, SR, GT, threshold=0.5):
         SR = SR > threshold
@@ -111,23 +114,23 @@ class task2_train():
         DC = 0.                     # Dice Coefficient
         length = 0
         train_loss = 0
+
         
         for batch_idx, (inputs, GT) in enumerate(self.train_loader):
             inputs, GT = inputs.to(self.device), GT.to(self.device)
+            self.optimizer.zero_grad()
+            with autocast():
+                SR = self.model(inputs)
+                # SR_probs = nn.Sigmoid()(SR)
+                SR_flat = SR.view(SR.size(0), -1)
+                GT_flat = GT.view(GT.size(0), -1)
+                loss = self.criterion(SR_flat,GT_flat)
 
-            SR = self.model(inputs)
-            SR_probs = F.sigmoid(SR)
-            SR_flat = SR_probs.view(SR_probs.size(0), -1)
+            self.scaler.scale(loss).backward()
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
 
-            GT_flat = GT.view(GT.size(0), -1)
-            loss = self.criterion(SR_flat,GT_flat)
             train_loss += loss.item()
-
-            # Backprop + optimize
-            self.model.zero_grad()
-            loss.backward()
-            self.optimizer.step()
-
             AC += self.get_accuracy(SR,GT)
             SE += self.get_sensitivity(SR,GT)
             SP += self.get_specificity(SR,GT)
@@ -146,3 +149,50 @@ class task2_train():
         DC = DC/length
 
         print('Training Loss: %.4f\nAC: %.4f, SE: %.4f, SP: %.4f, PC: %.4f, F1: %.4f, JS: %.4f, DC: %.4f' % (train_loss,AC,SE,SP,PC,F1,JS,DC))
+
+    def validate(self):
+        self.model.eval()
+
+        AC = 0.                     # Accuracy
+        SE = 0.                     # Sensitivity (Recall)
+        SP = 0.                     # Specificity
+        PC = 0.                     # Precision
+        F1 = 0.                     # F1 Score
+        JS = 0.                     # Jaccard Similarity
+        DC = 0.                     # Dice Coefficient
+        length = 0
+        val_loss = 0
+
+        with torch.no_grad():
+            for batch_idx, (inputs, GT) in enumerate(self.val_loader):
+                inputs, GT = inputs.to(self.device), GT.to(self.device)
+                
+                SR = self.model(inputs)
+                # SR_probs = nn.Sigmoid()(SR)
+                SR_flat = SR.view(SR.size(0), -1)
+                GT_flat = GT.view(GT.size(0), -1)
+                loss = self.criterion(SR_flat,GT_flat)
+
+                val_loss += loss.item()
+                AC += self.get_accuracy(SR,GT)
+                SE += self.get_sensitivity(SR,GT)
+                SP += self.get_specificity(SR,GT)
+                PC += self.get_precision(SR,GT)
+                F1 += self.get_F1(SR,GT)
+                JS += self.get_JS(SR,GT)
+                DC += self.get_DC(SR,GT)
+                length += inputs.size(0)
+
+        AC = AC/length
+        SE = SE/length
+        SP = SP/length
+        PC = PC/length
+        F1 = F1/length
+        JS = JS/length
+        DC = DC/length
+
+        print('Validation Loss: %.4f\nAC: %.4f, SE: %.4f, SP: %.4f, PC: %.4f, F1: %.4f, JS: %.4f, DC: %.4f' % (val_loss,AC,SE,SP,PC,F1,JS,DC))
+
+
+    def saveModel(self):
+        torch.save(self.model.state_dict(), self.model_path + "model.pth")
