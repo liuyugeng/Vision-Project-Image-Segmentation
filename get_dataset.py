@@ -7,18 +7,18 @@ from torch.utils import data
 
 
 class Cityscapes(data.Dataset):
-    def __init__(self, root, list_path, max_iters=None, crop_size=(321, 321),
-                 mean=(128, 128, 128), vars=(1,1,1), scale=True, mirror=True, ignore_label=255, RGB=False):
+    def __init__(self, root, list_path, max_iters=None, crop_size=np.array([1024,2048]),
+                 mean=(128, 128, 128), vars=(1,1,1), scale=0.25, mirror=True, ignore_label=255, RGB=False):
         self.root = root
         self.list_path = list_path
-        self.crop_h, self.crop_w = crop_size
+        self.crop_h, self.crop_w = (crop_size * scale).astype(int)
         self.scale = scale
         self.ignore_label = ignore_label
         self.mean = mean
         self.vars = vars
         self.is_mirror = mirror
         self.rgb = RGB
-        self.img_ids = [i_id.strip().split() for i_id in open(list_path)]
+        self.img_ids = [i_id.strip().split() for i_id in open(self.list_path)]
         if not max_iters==None:
                 self.img_ids = self.img_ids * int(np.ceil(float(max_iters) / len(self.img_ids)))
         self.files = []
@@ -44,9 +44,9 @@ class Cityscapes(data.Dataset):
         return len(self.files)
 
     def generate_scale_label(self, image, label):
-        f_scale = 0.125 #0.7 + random.randint(0, 14) / 10.0
-        image = cv2.resize(image, None, fx=f_scale, fy=f_scale, interpolation = cv2.INTER_LINEAR)
-        label = cv2.resize(label, None, fx=f_scale, fy=f_scale, interpolation = cv2.INTER_NEAREST)
+        # f_scale = 0.7 + random.randint(0, 14) / 10.0
+        image = cv2.resize(image, None, fx=self.scale, fy=self.scale, interpolation = cv2.INTER_LINEAR)
+        label = cv2.resize(label, None, fx=self.scale, fy=self.scale, interpolation = cv2.INTER_NEAREST)
         return image, label
 
     def id2trainId(self, label, reverse=False):
@@ -65,8 +65,7 @@ class Cityscapes(data.Dataset):
         label = cv2.imread(datafiles["label"], cv2.IMREAD_GRAYSCALE)
         label = self.id2trainId(label)
 
-        if self.scale:
-            image, label = self.generate_scale_label(image, label)
+        image, label = self.generate_scale_label(image, label)
         image = np.asarray(image, np.float32)
 
         if self.rgb:
