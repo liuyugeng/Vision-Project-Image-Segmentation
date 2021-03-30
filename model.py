@@ -71,10 +71,10 @@ class RRCNN_block(nn.Module):
             Recurrent_block(ch_out,t=t),
             Recurrent_block(ch_out,t=t)
         )
-        self.Conv_1x1 = nn.Conv2d(ch_in,ch_out,kernel_size=1,stride=1,padding=0)
+        self.Conv_ = nn.Conv2d(ch_in,ch_out,kernel_size=1,stride=1,padding=0)
 
     def forward(self,x):
-        x = self.Conv_1x1(x)
+        x = self.Conv_(x)
         x1 = self.RCNN(x)
         return x+x1
 

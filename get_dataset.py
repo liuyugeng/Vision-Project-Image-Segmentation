@@ -5,14 +5,15 @@ import cv2
 
 from torch.utils import data
 
+# based on https://github.com/lxtGH/GALD-DGCNet but I redefine the crop img
 
 class Cityscapes(data.Dataset):
     def __init__(self, root, list_path, max_iters=None, crop_size=np.array([1024,2048]),
                  mean=(128, 128, 128), vars=(1,1,1), scale=0.25, mirror=True, ignore_label=255, RGB=False):
         self.root = root
         self.list_path = list_path
-        self.crop_h, self.crop_w = (crop_size * scale).astype(int)
         self.scale = scale
+        self.crop_h, self.crop_w = (crop_size * self.scale).astype(int)
         self.ignore_label = ignore_label
         self.mean = mean
         self.vars = vars

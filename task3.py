@@ -18,7 +18,7 @@ from torchvision import transforms
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1,2,3,4"
+os.environ["CUDA_VISIBLE_DEVICES"] = "7,1,5,6"
 torch.multiprocessing.set_sharing_strategy('file_system')
 
 
@@ -28,12 +28,12 @@ def train_model(device, train_loader, val_loader):
     model = nn.DataParallel(model)
     task3 = task3_train(device, train_loader, val_loader, model, MODEL_PATH)
 
-    EPOCHS = 50000
+    EPOCHS = 500
 
     for epoch in range(EPOCHS):
         print("====================> Model Training Epoch: " + str(epoch))
         task3.train()
-        # task3.validate()
+        #task3.validate()
 
     task3.saveModel()
 
@@ -50,14 +50,14 @@ def evaluate_model(device, test_loader):
 if __name__ == "__main__":
     device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
 
-    IMG_MEAN = np.array((104.00698793, 116.66876762, 122.67891434), dtype=np.float32)
-    IMG_VARS = np.array((1, 1, 1), dtype=np.float32)
+    IMG_MEAN = np.array((0.485, 0.456, 0.406), dtype=np.float32)
+    IMG_VARS = np.array((0.229, 0.224, 0.225), dtype=np.float32)
 
-    trainset = Cityscapes(root='./data/cityscapes', list_path="./data/cityscapes/train.txt", mean=IMG_MEAN, vars=IMG_VARS, scale=1, mirror=False)
+    trainset = Cityscapes(root='./data/cityscapes', list_path="./data/cityscapes/train.txt", mean=IMG_MEAN, vars=IMG_VARS, scale=0.25, mirror=False,RGB=1)
     train_loader = data.DataLoader(trainset, batch_size=8, shuffle=False, pin_memory=True)
 
     testset = Cityscapes(root='./data/cityscapes', list_path="./data/cityscapes/test.txt", mean=IMG_MEAN, vars=IMG_VARS, scale=1, mirror=False)
     test_loader = data.DataLoader(testset, batch_size=1, shuffle=False, pin_memory=True)
 
-    # train_model(device, train_loader, val_loader=None)
-    evaluate_model(device, test_loader)
+    train_model(device, train_loader, val_loader=None)
+    # evaluate_model(device, test_loader)

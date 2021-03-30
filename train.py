@@ -206,7 +206,7 @@ class task3_train():
 
         self.model = model.to(device)
         self.optimizer = optim.SGD(self.model.parameters(), lr=1e-2, momentum=0.9, weight_decay=5e-4)
-        self.criterion = CriterionOhemDSN()
+        self.criterion = CriterionOhemDSN(thresh=0.7, min_kept=100000)
         self.scaler = GradScaler()
 
     def train(self):
