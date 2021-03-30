@@ -14,7 +14,7 @@ from scipy import ndimage
 from torch.utils import data
 from PIL import Image as PILImage
 
-DATA_DIRECTORY = 'cityscapes'
+DATA_DIRECTORY = './data/cityscapes'
 DATA_LIST_PATH = './data/cityscapes/val.txt'
 IGNORE_LABEL = 255
 NUM_CLASSES = 19
@@ -213,7 +213,7 @@ def val():
         IMG_MEAN = np.array((104.00698793, 116.66876762, 122.67891434), dtype=np.float32)
         IMG_VARS = np.array((1, 1, 1), dtype=np.float32)
 
-    dataset = Cityscapes(root='./data/cityscapes', list_path="./data/cityscapes/train.txt", crop_size=np.array([1024, 2048]), mean=IMG_MEAN, vars=IMG_VARS,
+    dataset = Cityscapes(root='./data/cityscapes', list_path="./data/cityscapes/val.txt", crop_size=np.array([1024, 2048]), mean=IMG_MEAN, vars=IMG_VARS,
                         scale=1, mirror=False, RGB=args.rgb)
     testloader = data.DataLoader(dataset, batch_size=1, shuffle=False, pin_memory=True)
 
@@ -307,7 +307,7 @@ def get_task2_output():
         IMG_MEAN = np.array((104.00698793, 116.66876762, 122.67891434), dtype=np.float32)
         IMG_VARS = np.array((1, 1, 1), dtype=np.float32)
 
-    dataset = Cityscapes(root='./data/cityscapes', list_path="./data/cityscapes/train.txt", crop_size=np.array([1024, 2048]), mean=IMG_MEAN, vars=IMG_VARS,
+    dataset = Cityscapes(root='./data/cityscapes', list_path="./data/cityscapes/val.txt", crop_size=np.array([1024, 2048]), mean=IMG_MEAN, vars=IMG_VARS,
                         scale=scale, mirror=False, RGB=args.rgb)
     data_loader = data.DataLoader(dataset, batch_size=1, shuffle=False, pin_memory=True)
     MODEL_PATH = "./models/"
